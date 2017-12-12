@@ -3,20 +3,23 @@ package main
 import (
   "bufio"
   "os"
-  "fmt"
-  "log"
-  "math/big"
+	"fmt"
+	"log"
+	"math/big"
   "strconv"
+  "strings"
 
-  "github.com/ethereum/go-ethereum/accounts/abi/bind"
-  "github.com/ethereum/go-ethereum/accounts/abi/bind/backends"
-  "github.com/ethereum/go-ethereum/core"
+	"github.com/ethereum/go-ethereum/accounts/abi/bind"
+	"github.com/ethereum/go-ethereum/accounts/abi/bind/backends"
+  "github.com/ethereum/go-ethereum/ethclient"
+	"github.com/ethereum/go-ethereum/core"
   "github.com/ethereum/go-ethereum/common"
-  "github.com/ethereum/go-ethereum/crypto"
+	"github.com/ethereum/go-ethereum/crypto"
 )
 
 type ContractData struct {
   sim *backends.SimulatedBackend
+  client *ethclient.Client
   addr common.Address
   contract *LockboxApp
   auth *bind.TransactOpts
@@ -24,6 +27,41 @@ type ContractData struct {
 
 var err error
 var userMap map[string]*ContractData
+var testnetwork bool = false
+
+func getClient() (client *ethclient.Client, err error) {
+  fmt.Println("\n# Enter Ethereum client path")
+  scanner := bufio.NewScanner(os.Stdin)
+  scanner.Scan()
+  endPoint := scanner.Text()
+
+  client, err = ethclient.Dial(endPoint)
+  if err != nil {
+    log.Fatalf("### Error Dialing ethereum client. Please check if the eth network/test-network is running: %v", err)
+  }
+  return
+}
+
+func deployLockboxInTestNetwork() {
+  cd := new(ContractData)
+  cd.client, err = getClient()
+  fmt.Println("# Enter client key")
+  scanner := bufio.NewScanner(os.Stdin)
+  scanner.Scan()
+  key := scanner.Text()
+  fmt.Println("# Enter password")
+  scanner.Scan()
+  password := scanner.Text()
+  cd.auth, err = bind.NewTransactor(strings.NewReader(key), password)
+  if err != nil {
+    log.Fatalf("### Could not create auth: %v", err)
+  }
+  // Deploy LockboxApp contract
+  cd.addr, _, cd.contract, err = DeployLockboxApp(cd.auth, cd.client)
+  if err != nil {
+    log.Fatalf("### Error Deploying Contract: %v", err)
+  }
+}
 
 func deployLockbox(uname string) {
   cd := new(ContractData)
@@ -70,7 +108,7 @@ func testlockbox() {
   fmt.Println("# Mining...")
   cd.sim.Commit()
   fmt.Println("# Successfully created Lockbox") 
-  fmt.Printf("# Lockbox address: %v, Lockbox name: %s\n", cd.auth.From.String(), lname)
+  fmt.Printf("# Lockbox sender: %v, Lockbox name: %s\n", cd.auth.From.String(), lname)
 
   fmt.Println("\n# Getting lockbox name for input user account")
   uname, err := cd.contract.GetLockboxName(nil, cd.auth.From)
@@ -216,7 +254,7 @@ func createLockbox() {
   fmt.Println("# Mining...")
   cd.sim.Commit()
   fmt.Println("# Transaction Complete. Lockbox successfully created") 
-  fmt.Printf("# Lockbox address: %v, Lockbox name: %s\n", cd.auth.From.String(), lname)
+  fmt.Printf("# Lockbox key: %v, Lockbox user: %s\n", cd.auth.From.String(), lname)
 }
 
 // function adds personal info in the user lockbox
@@ -225,7 +263,19 @@ func addPersonalInfo() {
   fmt.Println("# Enter Username:")
   scanner.Scan()
   uname := scanner.Text()
-  cd := userMap[uname]
+  cd, ok := userMap[uname]
+  if !ok {
+    fmt.Println("\n### Lockbox account not found for user: ", uname)
+    return
+  }
+  fmt.Println("# Enter lockbox key:")
+  scanner.Scan()
+  key := scanner.Text()
+  if strings.Compare(key, cd.auth.From.String()) != 0 {
+    fmt.Println("\n### Invalid key. Cannot add personal info to lockbox for user: ", uname)
+    return
+  }
+
   fmt.Println("# Enter Personal Details:")
   fmt.Println("# Enter SSN:")
   scanner.Scan()
@@ -252,7 +302,7 @@ func addPersonalInfo() {
   fmt.Println("# Mining...")
   cd.sim.Commit()
   fmt.Println("# Transaction Completed")
-  fmt.Printf("# Personal Info added for address: %s\n", cd.auth.From.String())
+  fmt.Printf("# Personal Info added for user: %s\n", uname)
 }
 
 // function adds login details in the user lockbox
@@ -261,7 +311,19 @@ func addLoginCredentials() {
   fmt.Println("# Enter Username:")
   scanner.Scan()
   uname := scanner.Text()
-  cd := userMap[uname]
+  cd, ok := userMap[uname]
+  if !ok {
+    fmt.Println("\n### Lockbox account not found for user: ", uname)
+    return
+  }
+  fmt.Println("# Enter lockbox key:")
+  scanner.Scan()
+  key := scanner.Text()
+  if strings.Compare(key, cd.auth.From.String()) != 0 {
+    fmt.Println("\n### Invalid key. Cannot add login credentials to lockbox for user: ", uname)
+    return
+  }
+
   fmt.Println("# Enter Login Credentials:")
   fmt.Println("# Enter Account:")
   scanner.Scan()
@@ -285,7 +347,7 @@ func addLoginCredentials() {
   fmt.Println("# Mining...")
   cd.sim.Commit()
   fmt.Println("# Transaction Completed")
-  fmt.Printf("# Login details added for address: %s\n", cd.auth.From.String())
+  fmt.Printf("# Login details added for user: %s\n", uname)
 
 }
 
@@ -295,7 +357,19 @@ func addCreditCardDetails() {
   fmt.Println("# Enter Username:")
   scanner.Scan()
   uname := scanner.Text()
-  cd := userMap[uname]
+  cd, ok := userMap[uname]
+  if !ok {
+    fmt.Println("\n### Lockbox account not found for user: ", uname)
+    return
+  }
+  fmt.Println("# Enter lockbox key:")
+  scanner.Scan()
+  key := scanner.Text()
+  if strings.Compare(key, cd.auth.From.String()) != 0 {
+    fmt.Println("\n### Invalid key. Cannot add card details to lockbox for user: ", uname)
+    return
+  }
+
   fmt.Println("# Enter Card Details:")
   fmt.Println("# Enter Card Name:")
   scanner.Scan()
@@ -345,6 +419,13 @@ func getPersonalInfo() {
     fmt.Println("\n### Lockbox account not found for user: ", uname)
     return
   }
+  fmt.Println("# Enter lockbox key:")
+  scanner.Scan()
+  key := scanner.Text()
+  if strings.Compare(key, cd.auth.From.String()) != 0 {
+    fmt.Println("\n### Invalid key. Cannot retrieve Login details for user: ", uname)
+    return
+  }
 
   fmt.Println("\n# Getting SSN of input user account")
   ssn, err := cd.contract.GetSSN(nil, cd.auth.From)
@@ -385,6 +466,13 @@ func getLoginDetails() {
     fmt.Println("\n### Lockbox account not found for user: ", uname)
     return
   }
+  fmt.Println("# Enter lockbox key:")
+  scanner.Scan()
+  key := scanner.Text()
+  if strings.Compare(key, cd.auth.From.String()) != 0 {
+    fmt.Println("\n### Invalid key. Cannot retrieve Login details for user: ", uname)
+    return
+  }
 
   fmt.Println("\n# Getting login details of input user account")
   fmt.Println("\n# Enter Account")
@@ -406,6 +494,13 @@ func getCardDetails() {
   cd, ok := userMap[uname]
   if !ok {
     fmt.Println("\n### Lockbox account not found for user: ", uname)
+    return
+  }
+  fmt.Println("# Enter lockbox key:")
+  scanner.Scan()
+  key := scanner.Text()
+  if strings.Compare(key, cd.auth.From.String()) != 0 {
+    fmt.Println("\n### Invalid key. Cannot retrieve Login details for user: ", uname)
     return
   }
 
