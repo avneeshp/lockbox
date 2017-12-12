@@ -2,7 +2,7 @@
 
 Steps to run lockbox application on simulated backend:
 1. Build and run application
-go build; ./lockbox
+=> go build; ./lockbox
 
 Steps to run lockbox application on test network:
 1. Set up and start ethereum client
